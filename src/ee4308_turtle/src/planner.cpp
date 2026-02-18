@@ -78,10 +78,9 @@ namespace ee4308::turtle
         // The following functions may be used:
         //   this->costmap_->getSizeInCellsX() // int
         //   this->costmap_->getSizeInCellsY() // int
-
-        return c < -1 || r < -1 
-                || c >= this->costmap_->getSizeInCellsX() 
-                || r >= this->costmap_->getSizeInCellsY();
+        int c_max = static_cast<int>(this->costmap_->getSizeInCellsX());
+        int r_max = static_cast<int>(this->costmap_->getSizeInCellsY());
+        return c < -1 || r < -1 || c >= c_max || r >= r_max;
     }
 
     nav_msgs::msg::Path Planner::createPlan(
@@ -120,16 +119,6 @@ namespace ee4308::turtle
 
         // =========== Initializations ===================
 
-        // Create a vector of nodes (modify accordingly)
-        std::vector<AStarNode> nodes;
-        for (int c = 0; c < this->costmap_->getSizeInCellsX(); ++c)
-        {
-            for (int r = 0; r < this->costmap_->getSizeInCellsY(); ++r)
-            {
-                nodes.emplace_back(c, r);
-            }
-        }
-
         // Create an open list
         OpenList<AStarNode *> open_list;
 
@@ -137,14 +126,29 @@ namespace ee4308::turtle
         auto [start_c, start_r] = this->XYToCR_(start.pose.position.x, start.pose.position.y);
         auto [goal_c, goal_r] = this->XYToCR_(goal.pose.position.x, goal.pose.position.y);
 
+        // Create a vector of nodes (modify accordingly)
+        std::vector<AStarNode *> nodes;
+        int c_max = static_cast<int>(this->costmap_->getSizeInCellsX());
+        int r_max = static_cast<int>(this->costmap_->getSizeInCellsY());
+        for (int r = 0; r < r_max; ++r)
+        {
+            for (int c = 0; c < c_max; ++c)
+            {
+                AStarNode *initNode = new AStarNode(c, r);
+                // h cost is euc dist, f and g INFINITY by default
+                initNode->h = std::pow(std::pow(c - goal_c, 2.0) 
+                        + std::pow(r - goal_r, 2.0), 0.5);
+                nodes.emplace_back(initNode);
+            }
+        }
+
+
         // do some start node initialization (modify accordingly)
         int start_idx = this->CRToIndex_(start_c, start_r);
-        AStarNode *start_node = &nodes[start_idx];
-        start_node->g = INFINITY;
-        // h cost is euc dist
-        start_node->h = std::pow(std::pow(start_c - goal_c, 2.0) 
-                + std::pow(start_r - goal_r, 2.0), 0.5);
-        start_node->f = INFINITY;
+        AStarNode *start_node = nodes[start_idx];
+        start_node->g = 0; // not moved from start
+        start_node->f = start_node->g + start_node->h;
+        // parent is still null
         open_list.push(start_node);
 
         // ================ Expansion loop ========================
@@ -161,18 +165,26 @@ namespace ee4308::turtle
             }
 
             // do stuff in expansion loop
-
+            if (node->expanded) continue;
             // ================ Neighbor loop ========================
             for (auto [dc, dr] : std::vector<std::pair<int, int>>{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}})
             {
                 int nb_c = node->c + dc;
                 int nb_r = node->r + dr;
-
-                (void) nb_c; // avoids unused variable warnings. Can be deleted.
-                (void) nb_r; // avoids unused variable warnings. Can be deleted.
+                int newIndex = CRToIndex_(nb_c, nb_r);
+                if (nodes[newIndex] == node->parent) continue; // skip evaluation, going back to parent
 
                 // do stuff in neighbor loop
+                double newg = nodes[CRToIndex_(node->c, node->r)]->g 
+                        + std::pow(dc*dc+dr*dr, 0.5) * costmap_->getCost(nb_c, nb_r); // new gcost for newnode
+                if (newg < nodes[newIndex]->g) { // if lower fcost, update nodes and add to open list else ignore
+                    nodes[newIndex]->g = newg;
+                    nodes[newIndex]->f = nodes[newIndex]->g + nodes[newIndex]->h; // new fcost for newnode
+                    nodes[newIndex]->parent = nodes[CRToIndex_(node->c, node->r)]; // update parent
+                    open_list.push(nodes[newIndex]);
+                }                
             }
+            node->expanded = true; // update this
         }
 
         return this->writeToPath_(nullptr, goal); // no path
@@ -206,10 +218,12 @@ namespace ee4308::turtle
             node = goal_node->parent;
         }
         
+        // TODO: sg quintic smoothening
+
         // don't forget to reverse the path!
         // reverse path.poses
         int start_ = 0;
-        int end_ = len() - 1;
+        int end_ = path.poses.size() - 1;
         while (start_ < end_) {
             geometry_msgs::msg::PoseStamped tmp_ = path.poses[start_];
             path.poses[start_] = path.poses[end_];
