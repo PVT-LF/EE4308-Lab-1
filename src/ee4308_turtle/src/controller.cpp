@@ -22,6 +22,9 @@ namespace ee4308::turtle
         ee4308::initParam(this->node_, this->plugin_name_ + ".max_linear_vel", this->max_linear_vel_, 0.22);
         ee4308::initParam(this->node_, this->plugin_name_ + ".xy_goal_thres", this->xy_goal_thres_, 0.05);
         ee4308::initParam(this->node_, this->plugin_name_ + ".yaw_goal_thres", this->yaw_goal_thres_, 0.25);
+        ee4308::initParam(this->node_, this->plugin_name_ + ".final_turn_omega", this->final_turn_omega_, 0.3);
+        ee4308::initParam(this->node_, this->plugin_name_ + ".curvature_thres", this->curvature_thres_, 0.6);
+        ee4308::initParam(this->node_, this->plugin_name_ + ".lookahead_gain", this->lookahead_gain_, 2.0);
 
         // initialize topics
         // this->sub_scan_ = this->node_->create_subscription<sensor_msgs::msg::LaserScan>(
@@ -55,7 +58,8 @@ namespace ee4308::turtle
 
         // get goal pose (contains the "clicked" goal rotation and position)
         geometry_msgs::msg::PoseStamped goal_pose = global_plan_.poses.back();
-        std::cout << "goal " << goal_pose.pose.position.x << " " << goal_pose.pose.position.y << std::endl;
+        // std::cout << "goal " << goal_pose.pose.position.x << " " << goal_pose.pose.position.y 
+                // << " " << ee4308::getYawFromQuaternion(goal_pose.pose.orientation) << std::endl;
 
 
         //  If the robot is close to the goal then stop
@@ -63,6 +67,9 @@ namespace ee4308::turtle
                 std::pow(rbt_pose.pose.position.x - goal_pose.pose.position.x, 2.0) 
                 + std::pow(rbt_pose.pose.position.y - goal_pose.pose.position.y, 2.0);
                 
+        // std::cout << "orientrbt " << ee4308::getYawFromQuaternion(rbt_pose.pose.orientation)
+                // << " goal " <<  ee4308::getYawFromQuaternion(goal_pose.pose.orientation) << std::endl;
+        // std::cout << "isthere " << (smallest_dist < std::pow(xy_goal_thres_, 2.0)) << std::endl;
         if (smallest_dist < std::pow(xy_goal_thres_, 2.0)) {
             if (std::abs(ee4308::getYawFromQuaternion(rbt_pose.pose.orientation)
                     - ee4308::getYawFromQuaternion(goal_pose.pose.orientation)) > yaw_goal_thres_) {
