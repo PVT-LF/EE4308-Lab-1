@@ -50,6 +50,11 @@ namespace ee4308::turtle
         double max_linear_vel_;
         double xy_goal_thres_;
         double yaw_goal_thres_;
+        double final_turn_omega_;
+        double curvature_thres_;
+        double lookahead_gain_;
+
+        double current_lookahead; // updated during runtime
 
         // topics 
         nav_msgs::msg::Path global_plan_;

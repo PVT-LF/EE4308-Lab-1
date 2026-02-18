@@ -34,10 +34,12 @@ namespace ee4308::turtle
         //   std::ceil()
         //   std::floor()
 
-        double dx = x - 0.0;
-        double dy = y + 0.0;
+        double dx = (x - costmap_->getResolution()/2 - costmap_->getOriginX())
+                / costmap_->getResolution();
+        double dy = (y - costmap_->getResolution()/2 - costmap_->getOriginY())
+                / costmap_->getResolution();
 
-        int c = std::ceil(dx);
+        int c = std::floor(dx);
         int r = std::floor(dy);
 
         return {c, r};
@@ -46,13 +48,15 @@ namespace ee4308::turtle
     // Converts cell column and cell row to world coordinates.
     std::pair<double, double> Planner::CRToXY_(int c, int r)
     {
+        // X, Y world coords float
+        // C, R map coords integer
         // The following functions may be used:
-        //   this->costmap_->getResolution()
+        //   this->costmap_->getResolution() // double in meters
         //   this->costmap_->getOriginX()
         //   this->costmap_->getOriginY()
 
-        double x = c + 0.0;
-        double y = r - 1.0;
+        double x = (c + 0.5) * this->costmap_->getResolution() + this->costmap_->getOriginX();
+        double y = (r + 0.5) * this->costmap_->getResolution() + this->costmap_->getOriginY();
 
         return {x, y};
     }
@@ -62,20 +66,22 @@ namespace ee4308::turtle
     int Planner::CRToIndex_(int c, int r)
     {
         // The following functions may be used:
-        //   this->costmap_->getSizeInCellsX()
-        //   this->costmap_->getSizeInCellsY()
+        //   this->costmap_->getSizeInCellsX() // int
+        //   this->costmap_->getSizeInCellsY() // int
 
-        return r * 2 + c * 1;
+        return r * this->costmap_->getSizeInCellsX() + c;
     }
 
     // Returns true if out of map, false otherwise.
     bool Planner::outOfMap_(int c, int r)
     {
         // The following functions may be used:
-        //   this->costmap_->getSizeInCellsX()
-        //   this->costmap_->getSizeInCellsY()
+        //   this->costmap_->getSizeInCellsX() // int
+        //   this->costmap_->getSizeInCellsY() // int
 
-        return c < -1 || r < -1;
+        return c < -1 || r < -1 
+                || c >= this->costmap_->getSizeInCellsX() 
+                || r >= this->costmap_->getSizeInCellsY();
     }
 
     nav_msgs::msg::Path Planner::createPlan(
@@ -84,7 +90,7 @@ namespace ee4308::turtle
         std::function<bool()> /*cancel_checker*/)
     {
         // =========== DELETE / COMMENT LINES IN {} ONCE READY TO CODE PLANNER ===================
-        { // Start (for lab 1 and testing)
+        /*{ // Start (for lab 1 and testing)
             nav_msgs::msg::Path path;
             path.poses.clear();
             path.header.frame_id = this->global_frame_id_;
@@ -110,15 +116,15 @@ namespace ee4308::turtle
             path.poses.push_back(goal_);
 
             return path;
-        } // End (for lab 1 and testing)
+        } // End (for lab 1 and testing) */
 
         // =========== Initializations ===================
 
         // Create a vector of nodes (modify accordingly)
         std::vector<AStarNode> nodes;
-        for (int c = 0; c < 10; ++c)
+        for (int c = 0; c < this->costmap_->getSizeInCellsX(); ++c)
         {
-            for (int r = -1; r < 11; ++r)
+            for (int r = 0; r < this->costmap_->getSizeInCellsY(); ++r)
             {
                 nodes.emplace_back(c, r);
             }
@@ -134,8 +140,10 @@ namespace ee4308::turtle
         // do some start node initialization (modify accordingly)
         int start_idx = this->CRToIndex_(start_c, start_r);
         AStarNode *start_node = &nodes[start_idx];
-        start_node->g = 0.0;
-        start_node->h = 0.0;
+        start_node->g = INFINITY;
+        // h cost is euc dist
+        start_node->h = std::pow(std::pow(start_c - goal_c, 2.0) 
+                + std::pow(start_r - goal_r, 2.0), 0.5);
         start_node->f = INFINITY;
         open_list.push(start_node);
 
@@ -199,6 +207,16 @@ namespace ee4308::turtle
         }
         
         // don't forget to reverse the path!
+        // reverse path.poses
+        int start_ = 0;
+        int end_ = len() - 1;
+        while (start_ < end_) {
+            geometry_msgs::msg::PoseStamped tmp_ = path.poses[start_];
+            path.poses[start_] = path.poses[end_];
+            path.poses[end_] = tmp_;
+            start_++;
+            end_--;
+        }
 
         // push the original goal (contains the final yaw angle of the robot)
         goal.header.frame_id = "";

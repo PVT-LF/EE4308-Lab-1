@@ -13,6 +13,7 @@ namespace ee4308::turtle
         this->node_ = parent.lock(); // this class is not a node_. It is instantiated as part of a node_ `parent`.
         this->tf_ = tf;
         this->plugin_name_ = name;
+        this->current_lookahead = desired_lookahead_dist_;
 
         // initialize parameters
         ee4308::initParam(this->node_, this->plugin_name_ + ".desired_linear_vel", this->desired_linear_vel_, 0.2);
@@ -54,13 +55,65 @@ namespace ee4308::turtle
 
         // get goal pose (contains the "clicked" goal rotation and position)
         geometry_msgs::msg::PoseStamped goal_pose = global_plan_.poses.back();
+        std::cout << "goal " << goal_pose.pose.position.x << " " << goal_pose.pose.position.y << std::endl;
 
-        // get lookahead?
+
+        //  If the robot is close to the goal then stop
+        double smallest_dist = 
+                std::pow(rbt_pose.pose.position.x - goal_pose.pose.position.x, 2.0) 
+                + std::pow(rbt_pose.pose.position.y - goal_pose.pose.position.y, 2.0);
+                
+        if (smallest_dist < std::pow(xy_goal_thres_, 2.0)) {
+            if (std::abs(ee4308::getYawFromQuaternion(rbt_pose.pose.orientation)
+                    - ee4308::getYawFromQuaternion(goal_pose.pose.orientation)) > yaw_goal_thres_) {
+                return writeCmdVel(0, final_turn_omega_); // spin to goal orientation
+                }
+            return writeCmdVel(0, 0); // can stop as goal met
+        }
+
+        //  From the closest point, find the lookahead point.
         geometry_msgs::msg::PoseStamped lookahead_pose = goal_pose;
 
-        double linear_vel = 0 * (lookahead_pose.pose.position.x - rbt_pose.pose.position.x);
-        double angular_vel = 0 * ee4308::getYawFromQuaternion(goal_pose.pose.orientation);
 
+        //  Find the point along the path that is closest to the robot.
+        for (int i = global_plan_.poses.size() - 1; i >= 0; i--) {
+            geometry_msgs::msg::PoseStamped checked_pose = global_plan_.poses[i];
+            std::cout << "checked " << checked_pose.pose.position.x << " " << checked_pose.pose.position.y << std::endl;
+            double current_dist = 
+                std::pow(rbt_pose.pose.position.x - checked_pose.pose.position.x, 2.0) 
+                + std::pow(rbt_pose.pose.position.y - checked_pose.pose.position.y, 2.0);
+            if (current_dist > std::pow(current_lookahead, 2.0)) {
+                lookahead_pose = checked_pose;
+            }
+            else break;
+        }
+
+        //  Transform the lookahead point into the robot frame to get ( x ′ , y ′ ) .
+        // delX = x_look - x_rbt
+        double delX = lookahead_pose.pose.position.x - rbt_pose.pose.position.x;
+        // delY = y_look - y_rbt
+        double delY = lookahead_pose.pose.position.y - rbt_pose.pose.position.y;
+        double phi = ee4308::getYawFromQuaternion(rbt_pose.pose.orientation); // getYaw returns -pi to +pi radians
+        // x' = delX cos(phi) + delY sin(phi)
+        double x_prime = delX * std::cos(phi) + delY * std::sin(phi);
+        // y' = delY cos(phi) - delX sin(phi)
+        double y_prime = delY * std::cos(phi) - delX * std::sin(phi);
+        std::cout << "prime " << x_prime << " " << y_prime << std::endl;
+
+        //  Calculate the curvature c . c = 1/r = 2y'/[(x'^2+y'^2)]
+        double curv = std::min(2 * y_prime / (std::pow(x_prime, 2.0) + std::pow(y_prime, 2.0)), curvature_thres_);
+        // Constrained curv in advance; curvature heuristic
+
+        //  Calculate ω from v and c .
+        //  Constrain ω to within the largest allowable angular speed.
+        double linear_vel = std::min(desired_linear_vel_, max_linear_vel_);
+        /*
+        if (proximity) linear_vel *= d_obs / obstacle_thres_;
+        */
+
+        //  Constrain v to within the largest allowable linear speed.
+        double angular_vel = (y_prime) / std::abs(y_prime) * std::min(std::abs(curv * linear_vel), max_angular_vel_);
+        current_lookahead = linear_vel * lookahead_gain_; // after considering proximity heuristic
         return writeCmdVel(linear_vel, angular_vel);
     }
 

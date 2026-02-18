@@ -25,6 +25,9 @@ controller_server:
       max_linear_vel: 0.22
       xy_goal_thres: 0.05
       yaw_goal_thres: 0.25
+      final_turn_omega: 0.3
+      curvature_thres: 0.6
+      lookahead_gain: 2.0
 
     enable_stamped_cmd_vel: true
 
