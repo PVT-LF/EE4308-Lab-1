@@ -22,6 +22,8 @@ namespace ee4308::turtle
         // declare parameters to let the node know we are using these params.
         ee4308::initParam(this->node_, this->plugin_name_ + ".max_access_cost", this->max_access_cost_, 254);
         ee4308::initParam(this->node_, this->plugin_name_ + ".interpolation_distance", this->interpolation_distance_, 0.05);
+        ee4308::initParam(this->node_, this->plugin_name_ + ".sg_half_window", this->sg_half_window_, 4);
+        ee4308::initParam(this->node_, this->plugin_name_ + ".sg_order", this->sg_order_, 3);
     }
 
     // Converts world coordinates to cell column and cell row.
@@ -78,9 +80,48 @@ namespace ee4308::turtle
         // The following functions may be used:
         //   this->costmap_->getSizeInCellsX() // int
         //   this->costmap_->getSizeInCellsY() // int
-        int c_max = static_cast<int>(this->costmap_->getSizeInCellsX());
-        int r_max = static_cast<int>(this->costmap_->getSizeInCellsY());
-        return c < -1 || r < -1 || c >= c_max || r >= r_max;
+
+        return c < 0 || r < 0
+                || c >= (int)this->costmap_->getSizeInCellsX() 
+                || r >= (int)this->costmap_->getSizeInCellsY();
+    }
+
+    void Planner::savitzkyGolay_(nav_msgs::msg::Path &path)
+    {
+        int n = (int)path.poses.size();
+        int m = sg_half_window_;
+        int p = sg_order_;
+        int w = 2 * m + 1;
+
+        if (n < w) return;
+
+        // Vandermonde matrix
+        Eigen::MatrixXd J(w, p + 1);
+        for (int i = 0; i < w; ++i)
+            for (int j = 0; j <= p; ++j)
+                J(i, j) = std::pow(-m + i, j);
+
+        
+        Eigen::MatrixXd A = (J.transpose() * J).inverse() * J.transpose();
+        Eigen::VectorXd kernel = A.row(0);
+
+        // smooth x and y separately
+        std::vector<double> xs(n), ys(n);
+        for (int i = 0; i < n; ++i) {
+            xs[i] = path.poses[i].pose.position.x;
+            ys[i] = path.poses[i].pose.position.y;
+        }
+
+        // only smooth the middle points, leave the start and goal unchanged
+        for (int i = m; i < n - m; ++i) {
+            double sx = 0, sy = 0;
+            for (int k = 0; k < w; ++k) {
+                sx += kernel[k] * xs[i + k - m];
+                sy += kernel[k] * ys[i + k - m];
+            }
+            path.poses[i].pose.position.x = sx;
+            path.poses[i].pose.position.y = sy;
+        }
     }
 
     nav_msgs::msg::Path Planner::createPlan(
@@ -119,6 +160,16 @@ namespace ee4308::turtle
 
         // =========== Initializations ===================
 
+        // Create a vector of nodes (modify accordingly)
+        std::vector<AStarNode> nodes;
+        for (int r = 0; r < (int)this->costmap_->getSizeInCellsY(); ++r)
+        {
+            for (int c = 0; c < (int)this->costmap_->getSizeInCellsX(); ++c)
+            {
+                nodes.emplace_back(c, r);
+            }
+        }
+
         // Create an open list
         OpenList<AStarNode *> open_list;
 
@@ -126,29 +177,14 @@ namespace ee4308::turtle
         auto [start_c, start_r] = this->XYToCR_(start.pose.position.x, start.pose.position.y);
         auto [goal_c, goal_r] = this->XYToCR_(goal.pose.position.x, goal.pose.position.y);
 
-        // Create a vector of nodes (modify accordingly)
-        std::vector<AStarNode *> nodes;
-        int c_max = static_cast<int>(this->costmap_->getSizeInCellsX());
-        int r_max = static_cast<int>(this->costmap_->getSizeInCellsY());
-        for (int r = 0; r < r_max; ++r)
-        {
-            for (int c = 0; c < c_max; ++c)
-            {
-                AStarNode *initNode = new AStarNode(c, r);
-                // h cost is euc dist, f and g INFINITY by default
-                initNode->h = std::pow(std::pow(c - goal_c, 2.0) 
-                        + std::pow(r - goal_r, 2.0), 0.5);
-                nodes.emplace_back(initNode);
-            }
-        }
-
-
         // do some start node initialization (modify accordingly)
         int start_idx = this->CRToIndex_(start_c, start_r);
-        AStarNode *start_node = nodes[start_idx];
-        start_node->g = 0; // not moved from start
+        AStarNode *start_node = &nodes[start_idx];
+        start_node->g = 0;
+        // h cost is euc dist
+        start_node->h = std::pow(std::pow(start_c - goal_c, 2.0) 
+                + std::pow(start_r - goal_r, 2.0), 0.5);
         start_node->f = start_node->g + start_node->h;
-        // parent is still null
         open_list.push(start_node);
 
         // ================ Expansion loop ========================
@@ -161,30 +197,59 @@ namespace ee4308::turtle
             // do something if goal found
             if (goal_c == node->c && goal_r == node->r)
             {
-                return this->writeToPath_(node, goal);
+                auto path = this->writeToPath_(node, goal);
+                savitzkyGolay_(path);
+                return path;
             }
 
             // do stuff in expansion loop
-            if (node->expanded) continue;
+            if (node->expanded)
+            {
+                continue;
+            }
+            node->expanded = true;
+
             // ================ Neighbor loop ========================
             for (auto [dc, dr] : std::vector<std::pair<int, int>>{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}})
             {
                 int nb_c = node->c + dc;
                 int nb_r = node->r + dr;
-                int newIndex = CRToIndex_(nb_c, nb_r);
-                if (nodes[newIndex] == node->parent) continue; // skip evaluation, going back to parent
+
+                // check if out of map
+                if (outOfMap_(nb_c, nb_r))
+                {
+                    continue;
+                }
+
+                int nb_idx = this->CRToIndex_(nb_c, nb_r);
+                AStarNode *nb_node = &nodes[nb_idx];
+
+                if (nb_node->expanded)
+                {
+                    continue;
+                }
+
+                // compute the cost to the neighbor
+                int cell_cost = this->costmap_->getCost(nb_c, nb_r);
+                if (cell_cost > this->max_access_cost_)
+                {
+                    continue;
+                }
+
+                double physical_dist = std::hypot(dc, dr);
+
+                double g_tilde = node->g + physical_dist * (1 + cell_cost / 252.0);
 
                 // do stuff in neighbor loop
-                double newg = nodes[CRToIndex_(node->c, node->r)]->g 
-                        + std::pow(dc*dc+dr*dr, 0.5) * costmap_->getCost(nb_c, nb_r); // new gcost for newnode
-                if (newg < nodes[newIndex]->g) { // if lower fcost, update nodes and add to open list else ignore
-                    nodes[newIndex]->g = newg;
-                    nodes[newIndex]->f = nodes[newIndex]->g + nodes[newIndex]->h; // new fcost for newnode
-                    nodes[newIndex]->parent = nodes[CRToIndex_(node->c, node->r)]; // update parent
-                    open_list.push(nodes[newIndex]);
-                }                
+                if (nb_node->g > g_tilde)
+                {
+                    nb_node->g = g_tilde;
+                    nb_node->h = std::hypot(nb_c - goal_c, nb_r - goal_r);
+                    nb_node->f = nb_node->g + nb_node->h;
+                    nb_node->parent = node;
+                    open_list.push(nb_node);
+                }
             }
-            node->expanded = true; // update this
         }
 
         return this->writeToPath_(nullptr, goal); // no path
@@ -215,15 +280,13 @@ namespace ee4308::turtle
             path.poses.push_back(pose);
 
             // go to the next node
-            node = goal_node->parent;
+            node = node->parent;
         }
         
-        // TODO: sg quintic smoothening
-
         // don't forget to reverse the path!
         // reverse path.poses
         int start_ = 0;
-        int end_ = path.poses.size() - 1;
+        int end_ = (int) path.poses.size() - 1;
         while (start_ < end_) {
             geometry_msgs::msg::PoseStamped tmp_ = path.poses[start_];
             path.poses[start_] = path.poses[end_];

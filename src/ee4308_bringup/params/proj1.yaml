@@ -28,6 +28,7 @@ controller_server:
       final_turn_omega: 0.3
       curvature_thres: 0.6
       lookahead_gain: 2.0
+      obstacle_thres: 0.35
 
     enable_stamped_cmd_vel: true
 
@@ -39,6 +40,8 @@ planner_server:
       plugin: "ee4308::turtle::Planner"
       max_access_cost: 200
       interpolation_distance: 0.05
+      sg_half_window: 4
+      sg_order: 3
 
 amcl:
   ros__parameters:
@@ -47,7 +50,8 @@ amcl:
     alpha3: 0.02 #0.2
     alpha4: 0.02 #0.2
     alpha5: 0.02 #0.2
-    base_frame_id: "base_footprint"
+    #base_frame_id: "base_footprint"
+    base_frame_id: "base_link"
     beam_skip_distance: 0.5
     beam_skip_error_threshold: 0.9
     beam_skip_threshold: 0.3
@@ -298,7 +302,8 @@ waypoint_follower:
 
 collision_monitor:
   ros__parameters:
-    base_frame_id: "base_footprint"
+    #base_frame_id: "base_footprint"
+    base_frame_id: "base_link"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
