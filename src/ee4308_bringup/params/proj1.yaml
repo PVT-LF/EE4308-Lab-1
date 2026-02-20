@@ -24,8 +24,8 @@ controller_server:
       max_angular_vel: 1.0
       max_linear_vel: 0.22
       xy_goal_thres: 0.05
-      yaw_goal_thres: 0.25
-      final_turn_omega: 0.3
+      yaw_goal_thres: 0.15
+      final_turn_omega: 0.5
       curvature_thres: 0.6
       lookahead_gain: 2.0
       obstacle_thres: 0.35
@@ -40,7 +40,7 @@ planner_server:
       plugin: "ee4308::turtle::Planner"
       max_access_cost: 200
       interpolation_distance: 0.05
-      sg_half_window: 4
+      sg_half_window: 2
       sg_order: 3
 
 amcl:

@@ -63,7 +63,7 @@ namespace ee4308::turtle
 
         // get goal pose (contains the "clicked" goal rotation and position)
         geometry_msgs::msg::PoseStamped goal_pose = global_plan_.poses.back();
-        std::cout << "goal " << goal_pose.pose.position.x << " " << goal_pose.pose.position.y << std::endl;
+        // std::cout << "goal " << goal_pose.pose.position.x << " " << goal_pose.pose.position.y << std::endl;
 
 
         //  If the robot is close to the goal then stop
@@ -72,15 +72,10 @@ namespace ee4308::turtle
                 + std::pow(rbt_pose.pose.position.y - goal_pose.pose.position.y, 2.0);
                 
         if (smallest_dist < std::pow(xy_goal_thres_, 2.0)) {
-            // if (std::abs(ee4308::getYawFromQuaternion(rbt_pose.pose.orientation)
-            //         - ee4308::getYawFromQuaternion(goal_pose.pose.orientation)) > yaw_goal_thres_) {
-            //     return writeCmdVel(0, final_turn_omega_); // spin to goal orientation
-            //     }
-            double yaw_diff = ee4308::getYawFromQuaternion(goal_pose.pose.orientation)
-                    - ee4308::getYawFromQuaternion(rbt_pose.pose.orientation);
-            double yaw_err = ee4308::limitAngle(yaw_diff);
-            if (std::abs(yaw_err) > yaw_goal_thres_) {
-                return writeCmdVel(0, ee4308::sgn(yaw_err) * final_turn_omega_);
+            double yaw_diff = ee4308::limitAngle(ee4308::getYawFromQuaternion(goal_pose.pose.orientation)
+                    - ee4308::getYawFromQuaternion(rbt_pose.pose.orientation));
+            if (std::abs(yaw_diff) > yaw_goal_thres_) {
+                return writeCmdVel(0, ee4308::sgn(yaw_diff) * final_turn_omega_);
             }
             return writeCmdVel(0, 0); // can stop as goal met
         }
@@ -136,7 +131,7 @@ namespace ee4308::turtle
 
         //  Calculate the curvature c . c = 1/r = 2y'/[(x'^2+y'^2)]
         double denom = std::pow(x_prime, 2.0) + std::pow(y_prime, 2.0);
-        double curv = (denom < 1e-6) ? 0.0 : 2 * y_prime / denom;
+        double curv = (denom < 1e-6) ? 0.0 : 2 * y_prime / denom; // check for 0 denominator
 
         // Calculate ω from desired v and c (BEFORE heuristics modify v)
         double angular_vel = curv * desired_linear_vel_;
@@ -155,7 +150,7 @@ namespace ee4308::turtle
             }
         }
 
-        linear_vel = std::min(linear_vel, max_linear_vel_);
+        linear_vel = std::max(0.1, std::min(linear_vel, max_linear_vel_));
 
         //  Constrain ω to within the largest allowable angular speed.
         angular_vel = std::clamp(angular_vel, -max_angular_vel_, max_angular_vel_);
@@ -163,8 +158,8 @@ namespace ee4308::turtle
         // vary lookahead based on speed, but never below desired_lookahead_dist_
         current_lookahead = std::max(linear_vel * lookahead_gain_, desired_lookahead_dist_);
 
-        RCLCPP_INFO(node_->get_logger(), "curv=%.3f lin=%.3f ang=%.3f lookahead=%.3f scan_size=%zu",
-            curv, linear_vel, angular_vel, current_lookahead, scan_ranges_.size());
+        //RCLCPP_INFO(node_->get_logger(), "curv=%.3f lin=%.3f ang=%.3f lookahead=%.3f scan_size=%zu",
+            //curv, linear_vel, angular_vel, current_lookahead, scan_ranges_.size());
         return writeCmdVel(linear_vel, angular_vel);
     }
 
