@@ -56,11 +56,13 @@ namespace ee4308::turtle
 
         double current_lookahead; // updated during runtime
 
+        double obstacle_thres_; 
+
         // topics 
         nav_msgs::msg::Path global_plan_;
-        // std::vector<float> scan_ranges_;
-        // rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_scan_;
-        // void callbackSubScan_(sensor_msgs::msg::LaserScan::SharedPtr msg);
+        std::vector<float> scan_ranges_;
+        rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_scan_;
+        void callbackSubScan_(sensor_msgs::msg::LaserScan::SharedPtr msg);
 
         // other "protected" functions
         geometry_msgs::msg::TwistStamped writeCmdVel(double linear_vel, double angular_vel);

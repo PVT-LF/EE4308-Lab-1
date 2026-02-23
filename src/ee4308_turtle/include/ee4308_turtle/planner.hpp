@@ -74,6 +74,12 @@ namespace ee4308::turtle
         int max_access_cost_;
         double interpolation_distance_;
 
+        int sg_half_window_;   
+        int sg_order_;        
+
+        // smoothing function
+        void savitzkyGolay_(nav_msgs::msg::Path &path);
+
         std::pair<int, int> XYToCR_(double x, double y);
         int CRToIndex_(int c, int r);
         std::pair<double, double> CRToXY_(int c, int r);
