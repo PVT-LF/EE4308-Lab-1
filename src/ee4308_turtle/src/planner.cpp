@@ -156,8 +156,7 @@ namespace ee4308::turtle
         AStarNode *start_node = &nodes[start_idx];
         start_node->g = 0;
         // h cost is euc dist
-        start_node->h = std::pow(std::pow(start_c - goal_c, 2.0) 
-                + std::pow(start_r - goal_r, 2.0), 0.5);
+        start_node->h = std::hypot(start_c - goal_c, start_r - goal_r);
         start_node->f = start_node->g + start_node->h;
         open_list.push(start_node);
 
@@ -193,8 +192,9 @@ namespace ee4308::turtle
                 if (nb_node->expanded) continue;
 
                 // compute the cost to the neighbor
-                int cell_cost = this->costmap_->getCost(nb_c, nb_r);
-                if (cell_cost > this->max_access_cost_) continue; // hard obstacle
+                int cell_cost = this->costmap_->getCost(nb_c, nb_r) + 1; // costmap_ contains 0 costs!!
+                // std::cout << "cell cost " << cell_cost << std::endl;
+                if (cell_cost - 1 > this->max_access_cost_) continue; // hard obstacle
 
                 // double newg = node->g + std::hypot(dc, dr) * (1 + cell_cost / this->max_access_cost_);
                 double newg = node->g + std::hypot(dc, dr) * cell_cost;
@@ -256,8 +256,66 @@ namespace ee4308::turtle
         goal.header.frame_id = "";
         goal.header.stamp = rclcpp::Time(); // possible bug: prevents nav2 and tf2 from having time extrapolation issues.
         path.poses.push_back(goal);
-
         // return path;
+
+        // Done before S-G
+        // start with 1st pointer to start
+        int end_ = (int) path.poses.size();
+        int cur_ = 0;
+        int eval_ = 0;
+        bool blocked = false;
+        int divs;
+        std::cout << "anyangle size " << end_ << std::endl;
+        while (cur_ < end_ - 1) {
+            blocked = false;
+            eval_ = cur_;
+            // inner loop: iterate down until LOS blocked
+            while (eval_ < end_ - 1) {  
+                eval_++;
+                // std::cout << "anyangle cur/eval " << cur_ << "   " << eval_ << std::endl;
+                // find what cells any angle line passes through cur_ -> eval_
+                divs = eval_ - cur_;
+                for (int t = cur_ + 1; t < eval_; t++) { // check points
+                    double check_x = path.poses[cur_].pose.position.x + (t - cur_) / divs 
+                            * (path.poses[eval_].pose.position.x - path.poses[cur_].pose.position.x);
+                    double check_y = path.poses[cur_].pose.position.y + (t - cur_) / divs 
+                            * (path.poses[eval_].pose.position.y - path.poses[cur_].pose.position.y);
+                    auto [check_c, check_r] = this->XYToCR_(check_x, check_y);
+                    int cell_cost = this->costmap_->getCost(check_c, check_r);
+                    // std::cout << "cost debug anyangle " << cell_cost << std::endl;
+                    if (cell_cost > this->max_access_cost_) {
+                        blocked = true;
+                        eval_--; // eval is end point of direct angle path, not blocked point
+                        break;
+                    }
+                }
+                // blocked_check for any cell cost greater than max allowable
+                if (blocked) { // test for obstacle blocking
+                    // replace all middle points
+                    divs = eval_ - cur_;
+                    for (int t = cur_ + 1; t < eval_; t++) {
+                        path.poses[t].pose.position.x = path.poses[cur_].pose.position.x + (t - cur_) / divs 
+                                * (path.poses[eval_].pose.position.x - path.poses[cur_].pose.position.x);
+                        path.poses[t].pose.position.y = path.poses[cur_].pose.position.y + (t - cur_) / divs 
+                                * (path.poses[eval_].pose.position.y - path.poses[cur_].pose.position.y);
+                    }
+                    cur_ = eval_ + 1; // new start is end of last point + 1 as known blocked
+                } // else no block, continue on with longer test
+            }
+            if (eval_ == end_ - 1) { // no more checking, end reached
+                // if (!blocked) { // for case where straight path possible cur -> eval, last replacement
+                //     // replace all points between cur_ to goal
+                //     divs = end_ - 1 - cur_;
+                //     for (int t = cur_ + 1; t < end_ - 1; t++) { // replace points
+                //         path.poses[t].pose.position.x = (t - cur_) / divs 
+                //                 * (path.poses[eval_-1].pose.position.x - path.poses[cur_].pose.position.x);
+                //         path.poses[t].pose.position.y = (t - cur_) / divs 
+                //                 * (path.poses[eval_-1].pose.position.y - path.poses[cur_].pose.position.y);
+                //     }
+                // }
+                break; // finished, or it will be cur_ = eval_ = end-1 which breaks outer while
+            }
+        }
         return path;
     }
 

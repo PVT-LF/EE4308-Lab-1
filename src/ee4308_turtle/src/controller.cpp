@@ -127,7 +127,7 @@ namespace ee4308::turtle
         double x_prime = delX * std::cos(phi) + delY * std::sin(phi);
         // y' = delY cos(phi) - delX sin(phi)
         double y_prime = delY * std::cos(phi) - delX * std::sin(phi);
-        std::cout << "prime " << x_prime << " " << y_prime << std::endl;
+        // std::cout << "prime " << x_prime << " " << y_prime << std::endl;
 
         //  Calculate the curvature c . c = 1/r = 2y'/[(x'^2+y'^2)]
         double denom = std::pow(x_prime, 2.0) + std::pow(y_prime, 2.0);
