@@ -264,8 +264,8 @@ namespace ee4308::turtle
         int cur_ = 0;
         int eval_ = 0;
         bool blocked = false;
-        int divs;
-        std::cout << "anyangle size " << end_ << std::endl;
+        double divs;
+        // std::cout << "anyangle size " << end_ << std::endl;
         while (cur_ < end_ - 1) {
             blocked = false;
             eval_ = cur_;
@@ -274,7 +274,8 @@ namespace ee4308::turtle
                 eval_++;
                 // std::cout << "anyangle cur/eval " << cur_ << "   " << eval_ << std::endl;
                 // find what cells any angle line passes through cur_ -> eval_
-                divs = eval_ - cur_;
+                divs = (double) eval_ - cur_;
+                // std::cout << "testing for blocking " << eval_ << "  to  " << cur_ << std::endl;
                 for (int t = cur_ + 1; t < eval_; t++) { // check points
                     double check_x = path.poses[cur_].pose.position.x + (t - cur_) / divs 
                             * (path.poses[eval_].pose.position.x - path.poses[cur_].pose.position.x);
@@ -283,7 +284,7 @@ namespace ee4308::turtle
                     auto [check_c, check_r] = this->XYToCR_(check_x, check_y);
                     int cell_cost = this->costmap_->getCost(check_c, check_r);
                     // std::cout << "cost debug anyangle " << cell_cost << std::endl;
-                    if (cell_cost > this->max_access_cost_) {
+                    if (cell_cost > this->max_access_cost_ / 3) {
                         blocked = true;
                         eval_--; // eval is end point of direct angle path, not blocked point
                         break;
@@ -291,31 +292,35 @@ namespace ee4308::turtle
                 }
                 // blocked_check for any cell cost greater than max allowable
                 if (blocked) { // test for obstacle blocking
+                    // std::cout << "blocking " << eval_ << "  to  " << cur_ << std::endl;
                     // replace all middle points
-                    divs = eval_ - cur_;
+                    divs = (double) eval_ - cur_;
                     for (int t = cur_ + 1; t < eval_; t++) {
                         path.poses[t].pose.position.x = path.poses[cur_].pose.position.x + (t - cur_) / divs 
                                 * (path.poses[eval_].pose.position.x - path.poses[cur_].pose.position.x);
                         path.poses[t].pose.position.y = path.poses[cur_].pose.position.y + (t - cur_) / divs 
                                 * (path.poses[eval_].pose.position.y - path.poses[cur_].pose.position.y);
+                        // std::cout << "newx, y " << t << "  att, " << path.poses[t].pose.position.x << "  " << path.poses[t].pose.position.y << std::endl;
                     }
                     cur_ = eval_ + 1; // new start is end of last point + 1 as known blocked
                 } // else no block, continue on with longer test
             }
             if (eval_ == end_ - 1) { // no more checking, end reached
-                // if (!blocked) { // for case where straight path possible cur -> eval, last replacement
-                //     // replace all points between cur_ to goal
-                //     divs = end_ - 1 - cur_;
-                //     for (int t = cur_ + 1; t < end_ - 1; t++) { // replace points
-                //         path.poses[t].pose.position.x = (t - cur_) / divs 
-                //                 * (path.poses[eval_-1].pose.position.x - path.poses[cur_].pose.position.x);
-                //         path.poses[t].pose.position.y = (t - cur_) / divs 
-                //                 * (path.poses[eval_-1].pose.position.y - path.poses[cur_].pose.position.y);
-                //     }
-                // }
+                if (!blocked) { // for case where straight path possible cur -> eval, last replacement
+                    // replace all points between cur_ to goal
+                    // divs = (double) end_ - 1 - cur_;
+                    // for (int t = cur_ + 1; t < end_ - 1; t++) { // replace points
+                    //     path.poses[t].pose.position.x = (t - cur_) / divs 
+                    //             * (path.poses[eval_-1].pose.position.x - path.poses[cur_].pose.position.x);
+                    //     path.poses[t].pose.position.y = (t - cur_) / divs 
+                    //             * (path.poses[eval_-1].pose.position.y - path.poses[cur_].pose.position.y);
+                    //     std::cout << "newx, y " << t << "  att, " << path.poses[t].pose.position.x << "  " << path.poses[t].pose.position.y << std::endl;
+                    // }
+                }
                 break; // finished, or it will be cur_ = eval_ = end-1 which breaks outer while
             }
         }
+        // std::cout << "og path size " << end_ << " actual " << (int) path.poses.size() << std::endl;
         return path;
     }
 
