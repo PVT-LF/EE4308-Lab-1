@@ -105,34 +105,6 @@ namespace ee4308::turtle
         const geometry_msgs::msg::PoseStamped &goal,
         std::function<bool()> /*cancel_checker*/)
     {
-        // =========== DELETE / COMMENT LINES IN {} ONCE READY TO CODE PLANNER ===================
-        /*{ // Start (for lab 1 and testing)
-            nav_msgs::msg::Path path;
-            path.poses.clear();
-            path.header.frame_id = this->global_frame_id_;
-            path.header.stamp = this->node_->now();
-            
-            double dx = start.pose.position.x - goal.pose.position.x;
-            double dy = start.pose.position.y - goal.pose.position.y;
-            int num_steps = std::floor(std::hypot(dx, dy) / 0.05);
-            std::vector<AStarNode> nodes;
-            for (int s = 0; s < num_steps; ++s)
-            {
-                geometry_msgs::msg::PoseStamped pose; 
-                pose.pose.position.x = dx * s / num_steps + goal.pose.position.x;
-                pose.pose.position.y =  dy * s / num_steps + goal.pose.position.y;
-                path.poses.push_back(pose);
-            }
-
-            std::reverse(path.poses.begin(), path.poses.end());
-
-            geometry_msgs::msg::PoseStamped goal_ = goal;
-            goal_.header.frame_id = "";
-            goal_.header.stamp = rclcpp::Time(); 
-            path.poses.push_back(goal_);
-
-            return path;
-        } // End (for lab 1 and testing) */
 
         // =========== Initializations ===================
 
@@ -193,10 +165,8 @@ namespace ee4308::turtle
 
                 // compute the cost to the neighbor
                 int cell_cost = this->costmap_->getCost(nb_c, nb_r) + 1; // costmap_ contains 0 costs!!
-                // std::cout << "cell cost " << cell_cost << std::endl;
                 if (cell_cost - 1 > this->max_access_cost_) continue; // hard obstacle
 
-                // double newg = node->g + std::hypot(dc, dr) * (1 + cell_cost / this->max_access_cost_);
                 double newg = node->g + std::hypot(dc, dr) * cell_cost;
 
                 if (nb_node->g > newg) {
@@ -238,44 +208,28 @@ namespace ee4308::turtle
             node = node->parent;
         }
         
-        // don't forget to reverse the path!
         // reverse path.poses
         std::reverse(path.poses.begin(), path.poses.end());
-        /*
-        int start_ = 0;
-        int end_ = (int) path.poses.size() - 1;
-        while (start_ < end_) {
-            geometry_msgs::msg::PoseStamped tmp_ = path.poses[start_];
-            path.poses[start_] = path.poses[end_];
-            path.poses[end_] = tmp_;
-            start_++;
-            end_--;
-        } */
 
         // push the original goal (contains the final yaw angle of the robot)
         goal.header.frame_id = "";
         goal.header.stamp = rclcpp::Time(); // possible bug: prevents nav2 and tf2 from having time extrapolation issues.
         path.poses.push_back(goal);
-        // return path;
 
         // Done before S-G
-        // start with 1st pointer to start
         int end_ = (int) path.poses.size();
         int cur_ = 0;
         int eval_ = 0;
         bool blocked = false;
         double divs;
-        // std::cout << "anyangle size " << end_ << std::endl;
         while (cur_ < end_ - 1) {
             blocked = false;
             eval_ = cur_;
             // inner loop: iterate down until LOS blocked
             while (eval_ < end_ - 1) {  
                 eval_++;
-                // std::cout << "anyangle cur/eval " << cur_ << "   " << eval_ << std::endl;
                 // find what cells any angle line passes through cur_ -> eval_
                 divs = (double) eval_ - cur_;
-                // std::cout << "testing for blocking " << eval_ << "  to  " << cur_ << std::endl;
                 for (int t = cur_ + 1; t < eval_; t++) { // check points
                     double check_x = path.poses[cur_].pose.position.x + (t - cur_) / divs 
                             * (path.poses[eval_].pose.position.x - path.poses[cur_].pose.position.x);
@@ -283,7 +237,6 @@ namespace ee4308::turtle
                             * (path.poses[eval_].pose.position.y - path.poses[cur_].pose.position.y);
                     auto [check_c, check_r] = this->XYToCR_(check_x, check_y);
                     int cell_cost = this->costmap_->getCost(check_c, check_r);
-                    // std::cout << "cost debug anyangle " << cell_cost << std::endl;
                     if (cell_cost > this->max_access_cost_ / 3) {
                         blocked = true;
                         eval_--; // eval is end point of direct angle path, not blocked point
@@ -292,7 +245,6 @@ namespace ee4308::turtle
                 }
                 // blocked_check for any cell cost greater than max allowable
                 if (blocked) { // test for obstacle blocking
-                    // std::cout << "blocking " << eval_ << "  to  " << cur_ << std::endl;
                     // replace all middle points
                     divs = (double) eval_ - cur_;
                     for (int t = cur_ + 1; t < eval_; t++) {
@@ -306,21 +258,9 @@ namespace ee4308::turtle
                 } // else no block, continue on with longer test
             }
             if (eval_ == end_ - 1) { // no more checking, end reached
-                if (!blocked) { // for case where straight path possible cur -> eval, last replacement
-                    // replace all points between cur_ to goal
-                    // divs = (double) end_ - 1 - cur_;
-                    // for (int t = cur_ + 1; t < end_ - 1; t++) { // replace points
-                    //     path.poses[t].pose.position.x = (t - cur_) / divs 
-                    //             * (path.poses[eval_-1].pose.position.x - path.poses[cur_].pose.position.x);
-                    //     path.poses[t].pose.position.y = (t - cur_) / divs 
-                    //             * (path.poses[eval_-1].pose.position.y - path.poses[cur_].pose.position.y);
-                    //     std::cout << "newx, y " << t << "  att, " << path.poses[t].pose.position.x << "  " << path.poses[t].pose.position.y << std::endl;
-                    // }
-                }
                 break; // finished, or it will be cur_ = eval_ = end-1 which breaks outer while
             }
         }
-        // std::cout << "og path size " << end_ << " actual " << (int) path.poses.size() << std::endl;
         return path;
     }
 

@@ -68,10 +68,10 @@ namespace ee4308::turtle
 
         //  If the robot is close to the goal then stop
         double smallest_dist = 
-                std::pow(rbt_pose.pose.position.x - goal_pose.pose.position.x, 2.0) 
-                + std::pow(rbt_pose.pose.position.y - goal_pose.pose.position.y, 2.0);
+                std::hypot(rbt_pose.pose.position.x - goal_pose.pose.position.x,
+                rbt_pose.pose.position.y - goal_pose.pose.position.y);
                 
-        if (smallest_dist < std::pow(xy_goal_thres_, 2.0)) {
+        if (smallest_dist < xy_goal_thres_) {
             double yaw_diff = ee4308::limitAngle(ee4308::getYawFromQuaternion(goal_pose.pose.orientation)
                     - ee4308::getYawFromQuaternion(rbt_pose.pose.orientation));
             if (std::abs(yaw_diff) > yaw_goal_thres_) {
@@ -80,24 +80,12 @@ namespace ee4308::turtle
             return writeCmdVel(0, 0); // can stop as goal met
         }
 
-        //  Find the point along the path that is closest to the robot.
-        // for (int i = global_plan_.poses.size() - 1; i >= 0; i--) {
-        //     geometry_msgs::msg::PoseStamped checked_pose = global_plan_.poses[i];
-        //     std::cout << "checked " << checked_pose.pose.position.x << " " << checked_pose.pose.position.y << std::endl;
-        //     double current_dist = 
-        //         std::pow(rbt_pose.pose.position.x - checked_pose.pose.position.x, 2.0) 
-        //         + std::pow(rbt_pose.pose.position.y - checked_pose.pose.position.y, 2.0);
-        //     if (current_dist > std::pow(current_lookahead, 2.0)) {
-        //         lookahead_pose = checked_pose;
-        //     }
-        //     else break;
-        // }
         int closest_index = 0;
         double min_dist = std::numeric_limits<double>::max();
         for (int i = 0; i < (int)global_plan_.poses.size(); ++i){
             double current_dist = 
-                std::pow(rbt_pose.pose.position.x - global_plan_.poses[i].pose.position.x, 2.0) 
-                + std::pow(rbt_pose.pose.position.y - global_plan_.poses[i].pose.position.y, 2.0);
+                    std::hypot(rbt_pose.pose.position.x - global_plan_.poses[i].pose.position.x
+                    rbt_pose.pose.position.y - global_plan_.poses[i].pose.position.y);
             if (current_dist < min_dist) {
                 min_dist = current_dist;
                 closest_index = i;
@@ -107,9 +95,9 @@ namespace ee4308::turtle
         geometry_msgs::msg::PoseStamped lookahead_pose = global_plan_.poses.back();
         for (int i = closest_index; i < (int)global_plan_.poses.size(); ++i) {
             double current_dist = 
-                std::pow(rbt_pose.pose.position.x - global_plan_.poses[i].pose.position.x, 2.0) 
-                + std::pow(rbt_pose.pose.position.y - global_plan_.poses[i].pose.position.y, 2.0);
-            if (current_dist > std::pow(current_lookahead, 2.0)) {
+                    std::hypot(rbt_pose.pose.position.x - global_plan_.poses[i].pose.position.x,
+                    rbt_pose.pose.position.y - global_plan_.poses[i].pose.position.y);
+            if (current_dist > current_lookahead) {
                 lookahead_pose = global_plan_.poses[i];
                 break;
             }
@@ -127,7 +115,6 @@ namespace ee4308::turtle
         double x_prime = delX * std::cos(phi) + delY * std::sin(phi);
         // y' = delY cos(phi) - delX sin(phi)
         double y_prime = delY * std::cos(phi) - delX * std::sin(phi);
-        // std::cout << "prime " << x_prime << " " << y_prime << std::endl;
 
         //  Calculate the curvature c . c = 1/r = 2y'/[(x'^2+y'^2)]
         double denom = std::pow(x_prime, 2.0) + std::pow(y_prime, 2.0);
@@ -158,8 +145,6 @@ namespace ee4308::turtle
         // vary lookahead based on speed, but never below desired_lookahead_dist_
         current_lookahead = std::max(linear_vel * lookahead_gain_, desired_lookahead_dist_);
 
-        //RCLCPP_INFO(node_->get_logger(), "curv=%.3f lin=%.3f ang=%.3f lookahead=%.3f scan_size=%zu",
-            //curv, linear_vel, angular_vel, current_lookahead, scan_ranges_.size());
         return writeCmdVel(linear_vel, angular_vel);
     }
 
